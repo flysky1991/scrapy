@@ -119,7 +119,7 @@ class BrokenStartRequestsSpider(FollowAllSpider):
         if self.fail_before_yield:
             1 / 0
 
-        for s in xrange(100):
+        for s in range(100):
             qargs = {'total': 10, 'seed': s}
             url = "http://localhost:8998/follow?%s" % urlencode(qargs, doseq=1)
             yield Request(url, meta={'seed': s})
@@ -170,10 +170,7 @@ class DuplicateStartRequestsSpider(Spider):
         for i in range(0, self.distinct_urls):
             for j in range(0, self.dupe_factor):
                 url = "http://localhost:8998/echo?headers=1&body=test%d" % i
-                yield self.make_requests_from_url(url)
-
-    def make_requests_from_url(self, url):
-        return Request(url, dont_filter=self.dont_filter)
+                yield Request(url, dont_filter=self.dont_filter)
 
     def __init__(self, url="http://localhost:8998", *args, **kwargs):
         super(DuplicateStartRequestsSpider, self).__init__(*args, **kwargs)

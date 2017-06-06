@@ -5,6 +5,7 @@ from time import time
 from datetime import datetime
 from collections import deque
 
+import six
 from twisted.internet import reactor, defer, task
 
 from scrapy.utils.defer import mustbe_deferred
@@ -188,11 +189,11 @@ class Downloader(object):
 
     def close(self):
         self._slot_gc_loop.stop()
-        for slot in self.slots.itervalues():
+        for slot in six.itervalues(self.slots):
             slot.close()
 
     def _slot_gc(self, age=60):
         mintime = time() - age
-        for key, slot in self.slots.items():
+        for key, slot in list(self.slots.items()):
             if not slot.active and slot.lastseen + slot.delay < mintime:
                 self.slots.pop(key).close()

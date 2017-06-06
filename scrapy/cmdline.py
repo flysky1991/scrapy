@@ -1,5 +1,5 @@
 from __future__ import print_function
-import sys
+import sys, os
 import optparse
 import cProfile
 import inspect
@@ -7,7 +7,6 @@ import pkg_resources
 
 import scrapy
 from scrapy.crawler import CrawlerProcess
-from scrapy.xlib import lsprofcalltree
 from scrapy.commands import ScrapyCommand
 from scrapy.exceptions import UsageError
 from scrapy.utils.misc import walk_modules
@@ -18,10 +17,11 @@ def _iter_command_classes(module_name):
     # TODO: add `name` attribute to commands and and merge this function with
     # scrapy.utils.spider.iter_spider_classes
     for module in walk_modules(module_name):
-        for obj in vars(module).itervalues():
+        for obj in vars(module).values():
             if inspect.isclass(obj) and \
-               issubclass(obj, ScrapyCommand) and \
-               obj.__module__ == module.__name__:
+                    issubclass(obj, ScrapyCommand) and \
+                    obj.__module__ == module.__name__ and \
+                    not obj == ScrapyCommand:
                 yield obj
 
 def _get_commands_from_module(module, inproject):
@@ -107,6 +107,12 @@ def execute(argv=None, settings=None):
 
     if settings is None:
         settings = get_project_settings()
+        # set EDITOR from environment if available
+        try:
+            editor = os.environ['EDITOR']
+        except KeyError: pass
+        else:
+            settings['EDITOR'] = editor
     check_deprecated_settings(settings)
 
     # --- backwards compatibility for scrapy.conf.settings singleton ---
@@ -144,7 +150,7 @@ def execute(argv=None, settings=None):
     sys.exit(cmd.exitcode)
 
 def _run_command(cmd, args, opts):
-    if opts.profile or opts.lsprof:
+    if opts.profile:
         _run_command_profiled(cmd, args, opts)
     else:
         cmd.run(args, opts)
@@ -152,17 +158,11 @@ def _run_command(cmd, args, opts):
 def _run_command_profiled(cmd, args, opts):
     if opts.profile:
         sys.stderr.write("scrapy: writing cProfile stats to %r\n" % opts.profile)
-    if opts.lsprof:
-        sys.stderr.write("scrapy: writing lsprof stats to %r\n" % opts.lsprof)
     loc = locals()
     p = cProfile.Profile()
     p.runctx('cmd.run(args, opts)', globals(), loc)
     if opts.profile:
         p.dump_stats(opts.profile)
-    k = lsprofcalltree.KCacheGrind(p)
-    if opts.lsprof:
-        with open(opts.lsprof, 'w') as f:
-            k.output(f)
 
 if __name__ == '__main__':
     execute()

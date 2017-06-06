@@ -96,9 +96,25 @@ def configure_logging(settings=None, install_root_handler=True):
         sys.stdout = StreamLogger(logging.getLogger('stdout'))
 
     if install_root_handler:
-        logging.root.setLevel(logging.NOTSET)
-        handler = _get_handler(settings)
-        logging.root.addHandler(handler)
+        install_scrapy_root_handler(settings)
+
+
+def install_scrapy_root_handler(settings):
+    global _scrapy_root_handler
+
+    if (_scrapy_root_handler is not None
+            and _scrapy_root_handler in logging.root.handlers):
+        logging.root.removeHandler(_scrapy_root_handler)
+    logging.root.setLevel(logging.NOTSET)
+    _scrapy_root_handler = _get_handler(settings)
+    logging.root.addHandler(_scrapy_root_handler)
+
+
+def get_scrapy_root_handler():
+    return _scrapy_root_handler
+
+
+_scrapy_root_handler = None
 
 
 def _get_handler(settings):
@@ -118,16 +134,14 @@ def _get_handler(settings):
     )
     handler.setFormatter(formatter)
     handler.setLevel(settings.get('LOG_LEVEL'))
-    handler.addFilter(TopLevelFormatter(['scrapy']))
+    if settings.getbool('LOG_SHORT_NAMES'):
+        handler.addFilter(TopLevelFormatter(['scrapy']))
     return handler
 
 
 def log_scrapy_info(settings):
     logger.info("Scrapy %(version)s started (bot: %(bot)s)",
                 {'version': scrapy.__version__, 'bot': settings['BOT_NAME']})
-
-    logger.info("Optional features available: %(features)s",
-                {'features': ", ".join(scrapy.optional_features)})
 
     d = dict(overridden_settings(settings))
     logger.info("Overridden settings: %(settings)r", {'settings': d})
@@ -147,6 +161,10 @@ class StreamLogger(object):
     def write(self, buf):
         for line in buf.rstrip().splitlines():
             self.logger.log(self.log_level, line.rstrip())
+
+    def flush(self):
+        for h in self.logger.handlers:
+            h.flush()
 
 
 class LogCounterHandler(logging.Handler):

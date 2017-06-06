@@ -3,6 +3,7 @@ import signal
 import logging
 import warnings
 
+import sys
 from twisted.internet import reactor, defer
 from zope.interface.verify import verifyClass, DoesNotImplement
 
@@ -15,7 +16,9 @@ from scrapy.signalmanager import SignalManager
 from scrapy.exceptions import ScrapyDeprecationWarning
 from scrapy.utils.ossignal import install_shutdown_handlers, signal_names
 from scrapy.utils.misc import load_object
-from scrapy.utils.log import LogCounterHandler, configure_logging, log_scrapy_info
+from scrapy.utils.log import (
+    LogCounterHandler, configure_logging, log_scrapy_info,
+    get_scrapy_root_handler, install_scrapy_root_handler)
 from scrapy import signals
 
 logger = logging.getLogger(__name__)
@@ -34,8 +37,11 @@ class Crawler(object):
         self.signals = SignalManager(self)
         self.stats = load_object(self.settings['STATS_CLASS'])(self)
 
-        handler = LogCounterHandler(self, level=settings.get('LOG_LEVEL'))
+        handler = LogCounterHandler(self, level=self.settings.get('LOG_LEVEL'))
         logging.root.addHandler(handler)
+        if get_scrapy_root_handler() is not None:
+            # scrapy root handler alread installed: update it with new settings
+            install_scrapy_root_handler(self.settings)
         # lambda is assigned to Crawler attribute because this way it is not
         # garbage collected after leaving __init__ scope
         self.__remove_handler = lambda: logging.root.removeHandler(handler)
@@ -73,7 +79,20 @@ class Crawler(object):
             yield self.engine.open_spider(self.spider, start_requests)
             yield defer.maybeDeferred(self.engine.start)
         except Exception:
+            # In Python 2 reraising an exception after yield discards
+            # the original traceback (see http://bugs.python.org/issue7563),
+            # so sys.exc_info() workaround is used.
+            # This workaround also works in Python 3, but it is not needed,
+            # and it is slower, so in Python 3 we use native `raise`.
+            if six.PY2:
+                exc_info = sys.exc_info()
+
             self.crawling = False
+            if self.engine is not None:
+                yield self.engine.close()
+
+            if six.PY2:
+                six.reraise(*exc_info)
             raise
 
     def _create_spider(self, *args, **kwargs):
@@ -145,9 +164,7 @@ class CrawlerRunner(object):
 
         :param dict kwargs: keyword arguments to initialize the spider
         """
-        crawler = crawler_or_spidercls
-        if not isinstance(crawler_or_spidercls, Crawler):
-            crawler = self._create_crawler(crawler_or_spidercls)
+        crawler = self.create_crawler(crawler_or_spidercls)
         return self._crawl(crawler, *args, **kwargs)
 
     def _crawl(self, crawler, *args, **kwargs):
@@ -161,6 +178,21 @@ class CrawlerRunner(object):
             return result
 
         return d.addBoth(_done)
+
+    def create_crawler(self, crawler_or_spidercls):
+        """
+        Return a :class:`~scrapy.crawler.Crawler` object.
+
+        * If `crawler_or_spidercls` is a Crawler, it is returned as-is.
+        * If `crawler_or_spidercls` is a Spider subclass, a new Crawler
+          is constructed for it.
+        * If `crawler_or_spidercls` is a string, this function finds
+          a spider with this name in a Scrapy project (using spider loader),
+          then creates a Crawler instance for it.
+        """
+        if isinstance(crawler_or_spidercls, Crawler):
+            return crawler_or_spidercls
+        return self._create_crawler(crawler_or_spidercls)
 
     def _create_crawler(self, spidercls):
         if isinstance(spidercls, six.string_types):

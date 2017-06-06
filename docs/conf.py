@@ -18,7 +18,7 @@ from os import path
 # is relative to the documentation root, use os.path.abspath to make it
 # absolute, like shown here.
 sys.path.append(path.join(path.dirname(__file__), "_ext"))
-sys.path.append(path.join(path.dirname(path.dirname(__file__)), "scrapy"))
+sys.path.insert(0, path.dirname(path.dirname(__file__)))
 
 
 # General configuration
@@ -45,7 +45,7 @@ master_doc = 'index'
 
 # General information about the project.
 project = u'Scrapy'
-copyright = u'2008-2015, Scrapy developers'
+copyright = u'2008-2016, Scrapy developers'
 
 # The version info for the project you're documenting, acts as replacement for
 # |version| and |release|, also used in various other places throughout the
@@ -108,7 +108,10 @@ html_theme = 'sphinx_rtd_theme'
 #html_theme_options = {}
 
 # Add any paths that contain custom themes here, relative to this directory.
-#html_theme_path = []
+# Add path to the RTD explicitly to robustify builds (otherwise might
+# fail in a clean Debian build env)
+import sphinx_rtd_theme
+html_theme_path = [sphinx_rtd_theme.get_html_theme_path()]
 
 
 # The style sheet to use for HTML and HTML Help pages. A file of that name
